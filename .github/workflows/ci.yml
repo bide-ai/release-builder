@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Actions are pinned by commit
+        run: |
+          .github/scripts/check-pinned-actions.sh --self-test
+          .github/scripts/check-pinned-actions.sh
+      - name: actionlint
+        run: |
+          set -euo pipefail
+          # actionlint v1.7.7 by checksum, so the linter is not a moving target either.
+          v=1.7.7
+          curl -fsSL -o al.tgz "https://github.com/rhysd/actionlint/releases/download/v${v}/actionlint_${v}_linux_amd64.tar.gz"
+          echo "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757  al.tgz" | sha256sum --check --strict
+          tar -xzf al.tgz actionlint
+          ./actionlint
