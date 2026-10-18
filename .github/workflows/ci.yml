@@ -35,3 +35,14 @@ jobs:
           echo "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757  al.tgz" | sha256sum --check --strict
           tar -xzf al.tgz actionlint
           ./actionlint
+      - name: Version input check
+        run: |
+          # The module SBOM workflow's version check accepts vX.Y.Z and vX.Y.Z-rc.N and nothing looser.
+          set -euo pipefail
+          line=$(grep -F '=~ ^v' .github/workflows/module-sbom.yml | head -n 1)
+          rx=$(sed -E 's/.*=~ (\^[^ ]+) \]\].*/\1/' <<<"$line")
+          echo "regex: $rx"
+          for v in v1.2.3 v0.21.0-rc.1 v1.0.0-alpha; do [[ "$v" =~ $rx ]] || { echo "refused $v"; exit 1; }; done
+          for v in v1.2 v1.2.3x v1.2.3- 'v1.2.3-a b' 'v1.2.3-(x)' 1.2.3 'v1.2.3;rm' ''; do
+            if [[ "$v" =~ $rx ]]; then echo "accepted '$v'"; exit 1; fi
+          done
