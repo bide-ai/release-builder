@@ -37,12 +37,13 @@ jobs:
           ./actionlint
       - name: Version input check
         run: |
-          # The module SBOM workflow's version check accepts vX.Y.Z and vX.Y.Z-rc.N and nothing looser.
+          # The module SBOM workflow's version check accepts semantic versions with an optional
+          # pre-release (v1.2.3, v0.21.0-rc.1) and nothing looser.
           set -euo pipefail
-          line=$(grep -F '=~ ^v' .github/workflows/module-sbom.yml | head -n 1)
-          rx=$(sed -E 's/.*=~ (\^[^ ]+) \]\].*/\1/' <<<"$line")
+          rx=$(sed -n "s/^ *VERSION_RX='\(.*\)'$/\1/p" .github/workflows/module-sbom.yml)
+          [ -n "$rx" ] || { echo "no VERSION_RX in module-sbom.yml"; exit 1; }
           echo "regex: $rx"
-          for v in v1.2.3 v0.21.0-rc.1 v1.0.0-alpha; do [[ "$v" =~ $rx ]] || { echo "refused $v"; exit 1; }; done
-          for v in v1.2 v1.2.3x v1.2.3- 'v1.2.3-a b' 'v1.2.3-(x)' 1.2.3 'v1.2.3;rm' ''; do
+          for v in v1.2.3 v0.21.0-rc.1 v1.0.0-alpha v1.0.0-rc.1.2 v0.21.0-rc.10 v1.0.0-0 v1.0.0--; do [[ "$v" =~ $rx ]] || { echo "refused $v"; exit 1; }; done
+          for v in v1.2 v1.2.3x v1.2.3- 'v1.2.3-a b' 'v1.2.3-(x)' 1.2.3 'v1.2.3;rm' '' v1.0.0-. v1.0.0-.. v1.0.0-rc..1 v1.0.0-rc. v01.0.0 v1.0.0-01 'v1.0.0+b'; do
             if [[ "$v" =~ $rx ]]; then echo "accepted '$v'"; exit 1; fi
           done
