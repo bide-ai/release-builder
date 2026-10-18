@@ -28,7 +28,7 @@ on:
         type: boolean
         default: false
       attest:
-        description: 'Attest the build. A release always does; a dry run does so only to rehearse (it writes to the public transparency log)'
+        description: 'Attest the build. A build of a tag is always attested; a dry run does so only to rehearse (it writes to the public transparency log)'
         type: boolean
         default: true
     outputs:
@@ -46,10 +46,13 @@ jobs:
     env:
       GOWORK: 'off'
       GO_VERSION: ${{ inputs.go-version }}
+      SNAPSHOT: ${{ inputs.snapshot }}
     steps:
       - name: Check the inputs
         run: |
           [[ "$GO_VERSION" =~ ^1\.[0-9]+\.[0-9]+$ ]] || { echo "go-version '$GO_VERSION' is not 1.X.Y"; exit 1; }
+          # A snapshot version under a release tag would be a build of the tag that is not the release.
+          if [ "$SNAPSHOT" = true ] && [ "$GITHUB_REF_TYPE" = tag ]; then echo "snapshot is not allowed for a tag"; exit 1; fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -62,24 +65,37 @@ jobs:
           cache: false
       - name: Pin the toolchain
         run: echo "GOTOOLCHAIN=local" >> "$GITHUB_ENV"
-      - name: Install syft
-        uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
-        with:
-          syft-version: v1.54.1
-      - name: Validate config
-        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
-        with:
-          distribution: goreleaser
-          version: '~> v2'
-          args: check
+      # goreleaser and syft are downloaded at the versions named here and checked against the SHA-256
+      # kept here, not taken as "the latest": they produce the files the attest job certifies. To move
+      # to another version, change the URL and the checksum together (the checksum is in the
+      # release's checksums file for the linux archive).
+      - name: Install goreleaser and syft
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/tools/bin"
+          cd "$RUNNER_TEMP"
+          fetch() { # fetch URL SHA256 MEMBER
+            curl -fsSL --retry 3 -o tool.tgz "$1"
+            echo "$2  tool.tgz" | sha256sum --check --strict
+            tar -xzf tool.tgz -C tools/bin "$3"
+            rm tool.tgz
+          }
+          fetch https://github.com/goreleaser/goreleaser/releases/download/v2.18.3/goreleaser_Linux_x86_64.tar.gz b8dee4728bca1aba0d71a832a17cd0a3799f75372878e7ffa36aef2343bce0bc goreleaser
+          fetch https://github.com/anchore/syft/releases/download/v1.54.1/syft_1.54.1_linux_amd64.tar.gz c069905b391cc4c20a5ba65ad5c10be2a7ba074f8ea6ad203e24d14e303dad47 syft
+          echo "$RUNNER_TEMP/tools/bin" >> "$GITHUB_PATH"
+      - name: Check the tools
+        run: |
+          goreleaser --version | head -n 3
+          syft version | head -n 3
+          goreleaser check
       # goreleaser builds the archives, the per-archive SBOMs and checksums.txt. It neither signs nor
       # publishes here: signing and publishing are the caller's, after the attestations verify.
       - name: Build
-        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
-        with:
-          distribution: goreleaser
-          version: '~> v2'
-          args: release --clean --skip=publish,sign ${{ inputs.snapshot && '--snapshot' || '' }}
+        run: |
+          set -euo pipefail
+          flags=(--clean "--skip=publish,sign")
+          if [ "$SNAPSHOT" = true ]; then flags+=(--snapshot); fi
+          goreleaser release "${flags[@]}"
         env:
           GITHUB_TOKEN: ${{ github.token }}
       # The approve page's SHA256SUMS (approvals/cmd/approvepage), built from the same commit. Its
@@ -104,15 +120,25 @@ jobs:
           done
           if [ -f dist/CHANGELOG.md ]; then cp dist/CHANGELOG.md out/CHANGELOG.md; fi
           ls -l out
+      # overwrite: false: an artifact of this name that already exists (the build steps can upload
+      # one with the run's token) makes this step, and so the release, fail: it can stop a release,
+      # not alter what the attest job takes. The digest is in the run summary.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: upload
         with:
           name: release-dist
           path: out
           if-no-files-found: error
           retention-days: 7
+          overwrite: false
+      - name: Record the artifact digest
+        env:
+          DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        run: echo "release-dist ${DIGEST}" >> "$GITHUB_STEP_SUMMARY"
 
   attest:
-    if: inputs.attest
+    # A tag build is always attested, whatever the caller passes: attest false is for a dry run.
+    if: inputs.attest || github.ref_type == 'tag'
     needs: build
     runs-on: ubuntu-latest
     permissions:

@@ -19,6 +19,13 @@ jobs:
         run: |
           .github/scripts/check-pinned-actions.sh --self-test
           .github/scripts/check-pinned-actions.sh
+      - name: No floating tool versions
+        run: |
+          # Tools that make or lint the attested files are downloaded at a named version and checked
+          # against a SHA-256 in the workflow (README rule 3), never "latest" or a range.
+          if grep -rnE --exclude=ci.yml "goreleaser-action|version: *['\"]?(~>|latest)|/releases/latest" .github/workflows; then
+            echo "a tool is floating or fetched without a pinned checksum"; exit 1
+          fi
       - name: actionlint
         run: |
           set -euo pipefail

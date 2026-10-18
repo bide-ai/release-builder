@@ -53,10 +53,17 @@ jobs:
           cache: false
       - name: Pin the toolchain
         run: echo "GOTOOLCHAIN=local" >> "$GITHUB_ENV"
+      # syft is downloaded at the version named here and checked against the SHA-256 kept here (the
+      # linux archive's, from the release's checksums file); change both together.
       - name: Install syft
-        uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
-        with:
-          syft-version: v1.54.1
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/tools/bin"
+          cd "$RUNNER_TEMP"
+          curl -fsSL --retry 3 -o syft.tgz https://github.com/anchore/syft/releases/download/v1.54.1/syft_1.54.1_linux_amd64.tar.gz
+          echo "c069905b391cc4c20a5ba65ad5c10be2a7ba074f8ea6ad203e24d14e303dad47  syft.tgz" | sha256sum --check --strict
+          tar -xzf syft.tgz -C tools/bin syft
+          echo "$RUNNER_TEMP/tools/bin" >> "$GITHUB_PATH"
       - name: Module SBOM
         run: |
           set -euo pipefail
@@ -72,9 +79,11 @@ jobs:
           path: out
           if-no-files-found: error
           retention-days: 7
+          overwrite: false
 
   attest:
-    if: inputs.attest
+    # A tag build is always attested, whatever the caller passes.
+    if: inputs.attest || github.ref_type == 'tag'
     needs: generate
     runs-on: ubuntu-latest
     permissions:
