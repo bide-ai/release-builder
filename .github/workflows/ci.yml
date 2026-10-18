@@ -35,3 +35,15 @@ jobs:
           echo "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757  al.tgz" | sha256sum --check --strict
           tar -xzf al.tgz actionlint
           ./actionlint
+      - name: Version input check
+        run: |
+          # The module SBOM workflow's version check accepts semantic versions with an optional
+          # pre-release (v1.2.3, v0.21.0-rc.1) and nothing looser.
+          set -euo pipefail
+          rx=$(sed -n "s/^ *VERSION_RX='\(.*\)'$/\1/p" .github/workflows/module-sbom.yml)
+          [ -n "$rx" ] || { echo "no VERSION_RX in module-sbom.yml"; exit 1; }
+          echo "regex: $rx"
+          for v in v1.2.3 v0.21.0-rc.1 v1.0.0-alpha v1.0.0-rc.1.2 v0.21.0-rc.10 v1.0.0-0 v1.0.0--; do [[ "$v" =~ $rx ]] || { echo "refused $v"; exit 1; }; done
+          for v in v1.2 v1.2.3x v1.2.3- 'v1.2.3-a b' 'v1.2.3-(x)' 1.2.3 'v1.2.3;rm' '' v1.0.0-. v1.0.0-.. v1.0.0-rc..1 v1.0.0-rc. v01.0.0 v1.0.0-01 'v1.0.0+b'; do
+            if [[ "$v" =~ $rx ]]; then echo "accepted '$v'"; exit 1; fi
+          done
