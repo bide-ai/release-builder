@@ -65,7 +65,7 @@ release's `release.yml` names:
 
 | Tag | Commit |
 |---|---|
-| v1.0.0 | (added when the tag is created) |
+| v1.0.0 | e84bc18f472a1e1791e766f3d9d80f71e11d303b |
 
 ## Licence
 
