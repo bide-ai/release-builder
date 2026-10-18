@@ -14,7 +14,7 @@ on:
         type: string
         required: true
       version:
-        description: 'The release tag (vX.Y.Z), or empty to use the latest release tag of the repository (the manual dry run)'
+        description: 'The release tag (vX.Y.Z or a pre-release vX.Y.Z-rc.N), or empty to use the latest release tag of the repository (the manual dry run)'
         type: string
         default: ''
       attest:
@@ -42,7 +42,7 @@ jobs:
       - name: Check the inputs
         run: |
           [[ "$GO_VERSION" =~ ^1\.[0-9]+\.[0-9]+$ ]] || { echo "go-version '$GO_VERSION' is not 1.X.Y"; exit 1; }
-          [[ -z "$VERSION_IN" || "$VERSION_IN" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "version '$VERSION_IN' is not vX.Y.Z"; exit 1; }
+          [[ -z "$VERSION_IN" || "$VERSION_IN" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "version '$VERSION_IN' is not vX.Y.Z or vX.Y.Z-rc.N"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
